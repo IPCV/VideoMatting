@@ -9,7 +9,7 @@ python inference_speed_test.py \
 import argparse
 import torch
 from tqdm import tqdm
-
+from model.mobileone import reparameterize_model
 from model.model import MattingNetwork
 
 torch.backends.cudnn.benchmark = True
@@ -22,9 +22,9 @@ class InferenceSpeedTest:
         
     def parse_args(self):
         parser = argparse.ArgumentParser()
-        parser.add_argument('--model-variant', type=str, required=True)
-        parser.add_argument('--resolution', type=int, required=True, nargs=2)
-        parser.add_argument('--downsample-ratio', type=float, required=True)
+        parser.add_argument('--model-variant', type=str, required=False, default='mobileone')
+        parser.add_argument('--resolution', type=int, required=False, nargs=2)
+        parser.add_argument('--downsample-ratio', type=float, required=False, default=0.25)
         parser.add_argument('--precision', type=str, default='float32')
         parser.add_argument('--disable-refiner', action='store_true')
         self.args = parser.parse_args()
@@ -34,11 +34,13 @@ class InferenceSpeedTest:
         self.precision = {'float32': torch.float32, 'float16': torch.float16}[self.args.precision]
         self.model = MattingNetwork(self.args.model_variant)
         self.model = self.model.to(device=self.device, dtype=self.precision).eval()
+        self.model = reparameterize_model(self.model)
         self.model = torch.jit.script(self.model)
         self.model = torch.jit.freeze(self.model)
     
     def loop(self):
-        w, h = self.args.resolution
+        # w, h = self.args.resolution
+        w, h = 1080, 1920
         src = torch.randn((1, 3, h, w), device=self.device, dtype=self.precision)
         with torch.no_grad():
             rec = None, None, None, None

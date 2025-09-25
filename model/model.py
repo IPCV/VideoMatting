@@ -10,6 +10,7 @@ from .lraspp import LRASPP
 from .decoder import RecurrentDecoder, Projection
 from .fast_guided_filter import FastGuidedFilterRefiner
 from .deep_guided_filter import DeepGuidedFilterRefiner
+from .mobileone import mobileone
 
 class MattingNetwork(nn.Module):
     def __init__(self,
@@ -17,17 +18,21 @@ class MattingNetwork(nn.Module):
                  refiner: str = 'deep_guided_filter',
                  pretrained_backbone: bool = False):
         super().__init__()
-        assert variant in ['mobilenetv3', 'resnet50']
+        assert variant in ['mobilenetv3', 'resnet50', 'mobileone']
         assert refiner in ['fast_guided_filter', 'deep_guided_filter']
         
         if variant == 'mobilenetv3':
             self.backbone = MobileNetV3LargeEncoder(pretrained_backbone)
             self.aspp = LRASPP(960, 128)
             self.decoder = RecurrentDecoder([16, 24, 40, 128], [80, 40, 32, 16])
-        else:
+        elif variant == 'resnet50':
             self.backbone = ResNet50Encoder(pretrained_backbone)
             self.aspp = LRASPP(2048, 256)
             self.decoder = RecurrentDecoder([64, 256, 512, 256], [128, 64, 32, 16])
+        elif variant == 'mobileone':
+            self.backbone = mobileone('s0')
+            self.aspp = LRASPP(256, 256)
+            self.decoder = RecurrentDecoder([48, 48, 128, 256], [256, 256, 128, 16])
             
         self.project_mat = Projection(16, 4)
         self.project_seg = Projection(16, 1)
@@ -77,3 +82,20 @@ class MattingNetwork(nn.Module):
             x = F.interpolate(x, scale_factor=scale_factor,
                 mode='bilinear', align_corners=False, recompute_scale_factor=False)
         return x
+
+
+if __name__ == "__main__":
+    from pathlib import Path
+    import torchvision.transforms as transforms
+    from PIL import Image
+    from mobileone import reparameterize_model
+    from torchsummary import summary
+    _ROOT_ = Path(__file__).parents[2]
+    transform = transforms.Compose([transforms.Resize((512, 1024)),transforms.ToTensor()])
+    img_path = "/home/sergi-garcia/Projects/Finetunning/matting-data/HD/Brainstorm/0000/com/0000.png"
+    img = Image.open(img_path)
+    img = transform(img)
+    img = img.unsqueeze(0).unsqueeze(0).to('cuda')
+    model = MattingNetwork(variant='mobileone').to('cuda')
+    fgr, pha = model(img)[:2]
+    summary(model, (3, 512, 512))
