@@ -1,8 +1,7 @@
 import torch
 from torch import Tensor
 from torch import nn
-from torch.nn import functional as F
-from typing import Tuple, Optional
+from typing import Optional
 
 class RecurrentDecoder(nn.Module):
     def __init__(self, feature_channels, decoder_channels):
