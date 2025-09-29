@@ -10,8 +10,8 @@ from .lraspp import LRASPP
 from .decoder import RecurrentDecoder, Projection
 from .fast_guided_filter import FastGuidedFilterRefiner
 from .deep_guided_filter import DeepGuidedFilterRefiner
+from .mobileone import mobileone
 
-from .onnx_helper import CustomOnnxResizeByFactorOp
 
 class MattingNetwork(nn.Module):
     def __init__(self,
@@ -19,18 +19,22 @@ class MattingNetwork(nn.Module):
                  refiner: str = 'deep_guided_filter',
                  pretrained_backbone: bool = False):
         super().__init__()
-        assert variant in ['mobilenetv3', 'resnet50']
+        assert variant in ['mobilenetv3', 'resnet50', 'mobileone']
         assert refiner in ['fast_guided_filter', 'deep_guided_filter']
-        
+
         if variant == 'mobilenetv3':
             self.backbone = MobileNetV3LargeEncoder(pretrained_backbone)
             self.aspp = LRASPP(960, 128)
             self.decoder = RecurrentDecoder([16, 24, 40, 128], [80, 40, 32, 16])
-        else:
+        elif variant == 'resnet50':
             self.backbone = ResNet50Encoder(pretrained_backbone)
             self.aspp = LRASPP(2048, 256)
             self.decoder = RecurrentDecoder([64, 256, 512, 256], [128, 64, 32, 16])
-            
+        elif variant == 'mobileone':
+            self.backbone = mobileone('s0')
+            self.aspp = LRASPP(256, 256)
+            self.decoder = RecurrentDecoder([48, 48, 128, 256], [256, 256, 128, 16])
+
         self.project_mat = Projection(16, 4)
         self.project_seg = Projection(16, 1)
 
@@ -38,25 +42,28 @@ class MattingNetwork(nn.Module):
             self.refiner = DeepGuidedFilterRefiner()
         else:
             self.refiner = FastGuidedFilterRefiner()
-        
-    def forward(self, src, r1, r2, r3, r4,
+
+    def forward(self,
+                src: Tensor,
+                r1: Optional[Tensor] = None,
+                r2: Optional[Tensor] = None,
+                r3: Optional[Tensor] = None,
+                r4: Optional[Tensor] = None,
                 downsample_ratio: float = 1,
                 segmentation_pass: bool = False):
-        
-        if torch.onnx.is_in_onnx_export():
-            src_sm = CustomOnnxResizeByFactorOp.apply(src, downsample_ratio)
-        elif downsample_ratio != 1:
+
+        if downsample_ratio != 1:
             src_sm = self._interpolate(src, scale_factor=downsample_ratio)
         else:
             src_sm = src
-        
+
         f1, f2, f3, f4 = self.backbone(src_sm)
         f4 = self.aspp(f4)
         hid, *rec = self.decoder(src_sm, f1, f2, f3, f4, r1, r2, r3, r4)
-        
+
         if not segmentation_pass:
             fgr_residual, pha = self.project_mat(hid).split([3, 1], dim=-3)
-            if torch.onnx.is_in_onnx_export() or downsample_ratio != 1:
+            if downsample_ratio != 1:
                 fgr_residual, pha = self.refiner(src, src_sm, fgr_residual, pha, hid)
             fgr = fgr_residual + src
             fgr = fgr.clamp(0., 1.)
@@ -66,13 +73,54 @@ class MattingNetwork(nn.Module):
             seg = self.project_seg(hid)
             return [seg, *rec]
 
-    def _interpolate(self, x: Tensor, scale_factor: float):
+    # def _interpolate(self, x: Tensor, scale_factor: float):
+    #     if x.ndim == 5:
+    #         B, T = x.shape[:2]
+    #         x = F.interpolate(x.flatten(0, 1), scale_factor=scale_factor,
+    #                           mode='bilinear', align_corners=False, recompute_scale_factor=False)
+    #         x = x.unflatten(0, (B, T))
+    #     else:
+    #         x = F.interpolate(x, scale_factor=scale_factor,
+    #                           mode='bilinear', align_corners=False, recompute_scale_factor=False)
+    #     return x
+
+    def _interpolate(self, x: Tensor, scale_factor):
+        # Ensure scale_factor is always a float or tuple of floats
+        if isinstance(scale_factor, torch.Tensor):
+            # If it’s a 0-dim tensor, .item() gives you a float
+            scale_factor = float(scale_factor.item())
+        elif isinstance(scale_factor, (list, tuple)) and isinstance(scale_factor[0], torch.Tensor):
+            # If it’s a list/tuple of tensors, convert each one
+            scale_factor = tuple(float(s.item()) for s in scale_factor)
+
         if x.ndim == 5:
             B, T = x.shape[:2]
-            x = F.interpolate(x.flatten(0, 1), scale_factor=scale_factor,
-                mode='bilinear', align_corners=False, recompute_scale_factor=False)
-            x = x.reshape(B, T, x.size(1), x.size(2), x.size(3))
+            x = F.interpolate(
+                x.flatten(0, 1), scale_factor=scale_factor,
+                mode='bilinear', align_corners=False, recompute_scale_factor=False
+            )
+            x = x.unflatten(0, (B, T))
         else:
-            x = F.interpolate(x, scale_factor=scale_factor,
-                mode='bilinear', align_corners=False, recompute_scale_factor=False)
+            x = F.interpolate(
+                x, scale_factor=scale_factor,
+                mode='bilinear', align_corners=False, recompute_scale_factor=False
+            )
         return x
+
+
+if __name__ == "__main__":
+    from pathlib import Path
+    import torchvision.transforms as transforms
+    from PIL import Image
+    from mobileone import reparameterize_model
+    from torchsummary import summary
+
+    _ROOT_ = Path(__file__).parents[2]
+    transform = transforms.Compose([transforms.Resize((512, 1024)), transforms.ToTensor()])
+    img_path = "/home/sergi-garcia/Projects/Finetunning/matting-data/HD/Brainstorm/0000/com/0000.png"
+    img = Image.open(img_path)
+    img = transform(img)
+    img = img.unsqueeze(0).unsqueeze(0).to('cuda')
+    model = MattingNetwork(variant='mobileone').to('cuda')
+    fgr, pha = model(img)[:2]
+    summary(model, (3, 512, 512))

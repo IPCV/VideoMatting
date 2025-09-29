@@ -26,13 +26,13 @@ class Exporter:
         
     def parse_args(self):
         parser = argparse.ArgumentParser()
-        parser.add_argument('--model-variant', type=str, required=True, choices=['mobilenetv3', 'resnet50'])
+        parser.add_argument('--model-variant', type=str, required=False, choices=['mobilenetv3', 'resnet50', 'mobileone'], default='mobileone')
         parser.add_argument('--model-refiner', type=str, default='deep_guided_filter', choices=['deep_guided_filter', 'fast_guided_filter'])
-        parser.add_argument('--precision', type=str, required=True, choices=['float16', 'float32'])
-        parser.add_argument('--opset', type=int, required=True)
-        parser.add_argument('--device', type=str, required=True)
+        parser.add_argument('--precision', type=str, required=False, choices=['float16', 'float32'], default='float16')
+        parser.add_argument('--opset', type=int, required=False, default=12)
+        parser.add_argument('--device', type=str, required=False, default='cuda')
         parser.add_argument('--checkpoint', type=str, required=False)
-        parser.add_argument('--output', type=str, required=True)
+        parser.add_argument('--output', type=str, required=False, default='model.onnx')
         self.args = parser.parse_args()
         
     def init_model(self):
@@ -44,7 +44,8 @@ class Exporter:
     def export(self):
         rec = (torch.zeros([1, 1, 1, 1]).to(self.args.device, self.precision),) * 4
         src = torch.randn(1, 3, 1080, 1920).to(self.args.device, self.precision)
-        downsample_ratio = torch.tensor([0.25]).to(self.args.device)
+        # downsample_ratio = torch.tensor([0.25]).to(self.args.device)
+        downsample_ratio = 1.0
         
         dynamic_spatial = {0: 'batch_size', 2: 'height', 3: 'width'}
         dynamic_everything = {0: 'batch_size', 1: 'channels', 2: 'height', 3: 'width'}
