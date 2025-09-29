@@ -1,14 +1,11 @@
 import re
-import time
 import math
-import numpy as np
 from functools import partial
-from typing import Optional, Union, Type, List, Tuple, Callable, Dict
+from typing import Callable
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader
 import torch.utils.checkpoint as checkpoint
 from einops import rearrange, repeat
 from timm.layers import DropPath, to_2tuple, trunc_normal_
