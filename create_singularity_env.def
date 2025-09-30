@@ -1,5 +1,5 @@
 Bootstrap: docker
-From: python:3.12-slim
+From: nvidia/cuda:12.0.0-devel-ubuntu22.04
 
 %labels
     Author Sergi Garcia Sarroca
@@ -12,28 +12,29 @@ From: python:3.12-slim
     export PATH="$VIRTUAL_ENV/bin:$PATH"
 
 %post
-    # Update packages
-    apt-get update && apt-get install -y \
-        build-essential \
-        git \
-        curl \
-        wget \
-        ca-certificates \
-        libgl1-mesa-glx \
-        libglib2.0-0 \
-        python3-venv \
-        && rm -rf /var/lib/apt/lists/*
+    export DEBIAN_FRONTEND=noninteractive
+    ln -fs /usr/share/zoneinfo/Etc/UTC /etc/localtime
+    apt update && apt install -y tzdata
+    dpkg-reconfigure -f noninteractive tzdata
+
+    apt update && apt install -y software-properties-common git curl
+    add-apt-repository ppa:deadsnakes/ppa -y
+    apt update && apt install -y software-properties-common git curl build-essential \
+        python3.12 python3.12-venv python3.12-dev python3.12-distutils
+
+    python3.12 -m ensurepip --upgrade
+    python3.12 -m pip install --upgrade pip setuptools wheel
 
     # Upgrade pip
     pip install --upgrade pip
 
-    # Create virtual environment
-    python -m venv /opt/venv
-    . /opt/venv/bin/activate
+    # Create and activate virtual environment
+    python3.12 -m venv /venv
+    export PATH="/venv/bin:$PATH"
+    export VIRTUAL_ENV="/venv"
 
     # Install Python packages inside venv
-    pip install --upgrade pip
-    pip install torch torchvision torchaudio pims av einops
+    pip install torch torchvision torchaudio pims av einops packaging kornia opencv-python xlsxwriter opencv-contrib-python
     pip install timm Pillow numpy matplotlib easing_functions tensorboard pandas codecarbon
     pip install mamba-ssm[causal-conv1d] --no-build-isolation
 

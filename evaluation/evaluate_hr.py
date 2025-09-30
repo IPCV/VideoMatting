@@ -41,8 +41,13 @@ import numpy as np
 import xlsxwriter
 import torch
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from tqdm import tqdm
 
+
+ROOT = Path(__file__).parents[1]
+# self.args.pred_dir = os.path.join(ROOT, 'inference_results/MambaHD/VM-Test-HD')
+# self.args.true_dir = os.path.join(ROOT, '/home/sergi-garcia/Projects/Finetunning/matting-data/HD/VM-Test-HD')
 
 class Evaluator:
     def __init__(self):
@@ -50,26 +55,27 @@ class Evaluator:
         self.init_metrics()
         self.evaluate()
         self.write_excel()
-        
+
     def parse_args(self):
         parser = argparse.ArgumentParser()
-        parser.add_argument('--pred-dir', type=str, required=True)
-        parser.add_argument('--true-dir', type=str, required=True)
+        parser.add_argument('--pred-dir', type=str, required=False, default='/home/sergi-garcia/projects/RobustVideoMatting/inference_results/MambaHD/VM-Test-HD')
+        parser.add_argument('--true-dir', type=str, required=False, default='/home/sergi-garcia/Projects/Finetunning/matting-data/HD/VM-Test-HD')
         parser.add_argument('--num-workers', type=int, default=48)
         parser.add_argument('--metrics', type=str, nargs='+', default=[
-            'pha_mad', 'pha_mse', 'pha_grad', 'pha_dtssd', 'fgr_mse'])
+            'pha_mad', 'pha_mse', 'pha_grad', 'pha_conn', 'pha_dtssd', 'fgr_mad', 'fgr_mse'])
         self.args = parser.parse_args()
-        
+
     def init_metrics(self):
         self.mad = MetricMAD()
         self.mse = MetricMSE()
         self.grad = MetricGRAD()
         self.dtssd = MetricDTSSD()
-        
+        self.conn = MetricCONN()
+
     def evaluate(self):
         tasks = []
         position = 0
-        
+
         with ThreadPoolExecutor(max_workers=self.args.num_workers) as executor:
             for dataset in sorted(os.listdir(self.args.pred_dir)):
                 if os.path.isdir(os.path.join(self.args.pred_dir, dataset)):
@@ -77,18 +83,18 @@ class Evaluator:
                         future = executor.submit(self.evaluate_worker, dataset, clip, position)
                         tasks.append((dataset, clip, future))
                         position += 1
-                    
+
         self.results = [(dataset, clip, future.result()) for dataset, clip, future in tasks]
-        
+
     def write_excel(self):
         workbook = xlsxwriter.Workbook(os.path.join(self.args.pred_dir, f'{os.path.basename(self.args.pred_dir)}.xlsx'))
         summarysheet = workbook.add_worksheet('summary')
         metricsheets = [workbook.add_worksheet(metric) for metric in self.results[0][2].keys()]
-        
+
         for i, metric in enumerate(self.results[0][2].keys()):
             summarysheet.write(i, 0, metric)
             summarysheet.write(i, 1, f'={metric}!B2')
-        
+
         for row, (dataset, clip, metrics) in enumerate(self.results):
             for metricsheet, metric in zip(metricsheets, metrics.values()):
                 # Write the header
@@ -99,27 +105,30 @@ class Evaluator:
                         metricsheet.write(0, col + 2, col)
                         colname = xlsxwriter.utility.xl_col_to_name(col + 2)
                         metricsheet.write(1, col + 2, f'=AVERAGE({colname}3:{colname}9999)')
-                        
+
                 metricsheet.write(row + 2, 0, dataset)
                 metricsheet.write(row + 2, 1, clip)
                 metricsheet.write_row(row + 2, 2, metric)
-        
+
         workbook.close()
 
     def evaluate_worker(self, dataset, clip, position):
-        framenames = sorted(os.listdir(os.path.join(self.args.pred_dir, dataset, clip, 'pha')))
-        metrics = {metric_name : [] for metric_name in self.args.metrics}
-        
+        framenames = sorted(os.listdir(os.path.join(self.args.pred_dir, dataset, 'pha')))
+        metrics = {metric_name: [] for metric_name in self.args.metrics}
+
         pred_pha_tm1 = None
         true_pha_tm1 = None
-        
+
         for i, framename in enumerate(tqdm(framenames, desc=f'{dataset} {clip}', position=position, dynamic_ncols=True)):
-            true_pha = cv2.imread(os.path.join(self.args.true_dir, dataset, clip, 'pha', framename), cv2.IMREAD_GRAYSCALE)
-            pred_pha = cv2.imread(os.path.join(self.args.pred_dir, dataset, clip, 'pha', framename), cv2.IMREAD_GRAYSCALE)
-            
+            if any(x in self.args.true_dir for x in ['VM-Test-HD', 'YoutubeMatteHD']):
+                true_pha = cv2.imread(os.path.join(self.args.true_dir, dataset, 'pha', framename[:-3]+'jpg'), cv2.IMREAD_GRAYSCALE)
+            else:
+                true_pha = cv2.imread(os.path.join(self.args.true_dir, dataset, 'pha', framename), cv2.IMREAD_GRAYSCALE)
+            pred_pha = cv2.imread(os.path.join(self.args.pred_dir, dataset, 'pha', framename), cv2.IMREAD_GRAYSCALE)
+
             true_pha = torch.from_numpy(true_pha).cuda(non_blocking=True).float().div_(255)
             pred_pha = torch.from_numpy(pred_pha).cuda(non_blocking=True).float().div_(255)
-            
+
             if 'pha_mad' in self.args.metrics:
                 metrics['pha_mad'].append(self.mad(pred_pha, true_pha))
             if 'pha_mse' in self.args.metrics:
@@ -127,25 +136,28 @@ class Evaluator:
             if 'pha_grad' in self.args.metrics:
                 metrics['pha_grad'].append(self.grad(pred_pha, true_pha))
             if 'pha_conn' in self.args.metrics:
-                metrics['pha_conn'].append(self.conn(pred_pha, true_pha))
+                metrics['pha_conn'].append(self.conn(pred_pha.cpu(), true_pha.cpu()))
             if 'pha_dtssd' in self.args.metrics:
                 if i == 0:
                     metrics['pha_dtssd'].append(0)
                 else:
                     metrics['pha_dtssd'].append(self.dtssd(pred_pha, pred_pha_tm1, true_pha, true_pha_tm1))
-                    
+
             pred_pha_tm1 = pred_pha
             true_pha_tm1 = true_pha
-            
+
             if 'fgr_mse' in self.args.metrics:
-                true_fgr = cv2.imread(os.path.join(self.args.true_dir, dataset, clip, 'fgr', framename), cv2.IMREAD_COLOR)
-                pred_fgr = cv2.imread(os.path.join(self.args.pred_dir, dataset, clip, 'fgr', framename), cv2.IMREAD_COLOR)
-                
+                if any(x in self.args.true_dir for x in ['VM-Test-HD', 'YoutubeMatteHD']):
+                    true_fgr = cv2.imread(os.path.join(self.args.true_dir, dataset, 'fgr', framename[:-3]+'jpg'), cv2.IMREAD_COLOR)
+                else:
+                    true_fgr = cv2.imread(os.path.join(self.args.true_dir, dataset, 'fgr', framename), cv2.IMREAD_COLOR)
+                pred_fgr = cv2.imread(os.path.join(self.args.pred_dir, dataset, 'fgr', framename), cv2.IMREAD_COLOR)
+
                 true_fgr = torch.from_numpy(true_fgr).float().div_(255)
                 pred_fgr = torch.from_numpy(pred_fgr).float().div_(255)
-                
+
                 true_msk = true_pha > 0
-                metrics['fgr_mse'].append(self.mse(pred_fgr[true_msk], true_fgr[true_msk]))
+                metrics['fgr_mse'].append(self.mse(pred_fgr[true_msk.cpu()], true_fgr[true_msk.cpu()]))
 
         return metrics
 
@@ -165,21 +177,21 @@ class MetricGRAD:
         self.filter_x, self.filter_y = self.gauss_filter(sigma)
         self.filter_x = torch.from_numpy(self.filter_x).unsqueeze(0).cuda()
         self.filter_y = torch.from_numpy(self.filter_y).unsqueeze(0).cuda()
-    
+
     def __call__(self, pred, true):
         true_grad = self.gauss_gradient(true)
         pred_grad = self.gauss_gradient(pred)
         return ((true_grad - pred_grad) ** 2).sum() / 1000
-    
+
     def gauss_gradient(self, img):
-        img_filtered_x = kornia.filters.filter2D(img[None, None, :, :], self.filter_x, border_type='replicate')[0, 0]
-        img_filtered_y = kornia.filters.filter2D(img[None, None, :, :], self.filter_y, border_type='replicate')[0, 0]
-        return (img_filtered_x**2 + img_filtered_y**2).sqrt()
-    
+        img_filtered_x = kornia.filters.filter2d(img[None, None, :, :], self.filter_x, border_type='replicate')[0, 0]
+        img_filtered_y = kornia.filters.filter2d(img[None, None, :, :], self.filter_y, border_type='replicate')[0, 0]
+        return (img_filtered_x ** 2 + img_filtered_y ** 2).sqrt()
+
     @staticmethod
     def gauss_filter(sigma, epsilon=1e-2):
         half_size = np.ceil(sigma * np.sqrt(-2 * np.log(np.sqrt(2 * np.pi) * sigma * epsilon)))
-        size = np.int(2 * half_size + 1)
+        size = int(2 * half_size + 1)
 
         # create filter in x axis
         filter_x = np.zeros((size, size))
@@ -189,19 +201,56 @@ class MetricGRAD:
                     j - half_size, sigma)
 
         # normalize filter
-        norm = np.sqrt((filter_x**2).sum())
+        norm = np.sqrt((filter_x ** 2).sum())
         filter_x = filter_x / norm
         filter_y = np.transpose(filter_x)
 
         return filter_x, filter_y
-        
+
     @staticmethod
     def gaussian(x, sigma):
-        return np.exp(-x**2 / (2 * sigma**2)) / (sigma * np.sqrt(2 * np.pi))
-    
+        return np.exp(-x ** 2 / (2 * sigma ** 2)) / (sigma * np.sqrt(2 * np.pi))
+
     @staticmethod
     def dgaussian(x, sigma):
-        return -x * MetricGRAD.gaussian(x, sigma) / sigma**2
+        return -x * MetricGRAD.gaussian(x, sigma) / sigma ** 2
+
+class MetricCONN:
+    def __call__(self, pred, true):
+        step=0.1
+        thresh_steps = np.arange(0, 1 + step, step)
+        round_down_map = -np.ones_like(true.cpu())
+        for i in range(1, len(thresh_steps)):
+            true_thresh = true >= thresh_steps[i]
+            pred_thresh = pred >= thresh_steps[i]
+            # intersection = (true_thresh & pred_thresh).astype(np.uint8)
+            intersection = (true_thresh & pred_thresh).to(torch.uint8)
+
+            # connected components
+            _, output, stats, _ = cv2.connectedComponentsWithStats(
+                intersection.cpu().numpy(), connectivity=4)
+            # start from 1 in dim 0 to exclude background
+            size = stats[1:, -1]
+
+            # largest connected component of the intersection
+            omega = np.zeros_like(true.cpu())
+            if len(size) != 0:
+                max_id = np.argmax(size)
+                # plus one to include background
+                omega[output == max_id + 1] = 1
+
+            mask = (round_down_map == -1) & (omega == 0)
+            round_down_map[mask] = thresh_steps[i - 1]
+        round_down_map[round_down_map == -1] = 1
+
+        true_diff = true - round_down_map
+        pred_diff = pred.cpu() - round_down_map
+        # only calculate difference larger than or equal to 0.15
+        true_phi = 1 - true_diff * (true_diff >= 0.15)
+        pred_phi = 1 - pred_diff * (pred_diff >= 0.15)
+
+        connectivity_error = np.sum(np.abs(true_phi.cpu().numpy() - pred_phi.cpu().numpy()))
+        return connectivity_error / 1000
 
 
 class MetricDTSSD:
