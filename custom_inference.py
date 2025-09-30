@@ -3,6 +3,7 @@ import argparse
 import torch
 from tqdm import tqdm
 from model import MattingNetwork
+import torchvision.transforms.functional as F
 from model.mobileone import reparameterize_model
 from pathlib import Path
 from inference import convert_video
@@ -10,11 +11,11 @@ from inference import convert_video
 
 parser = argparse.ArgumentParser()
 # Matting dataset
-parser.add_argument('--dataset', type=str, default='VideoMatteLR', required=False)
-parser.add_argument('--data-dir', type=str, default='matting-data/LR', required=False)
-parser.add_argument('--data-out', type=str, default='inference_results', required=False)
-parser.add_argument('--variant', type=str, default='mobileone', choices=['mobileone'])
-parser.add_argument('--weights', type=str, required=True)
+parser.add_argument('--dataset', type=str, default='VM-Test-HD', required=False)
+parser.add_argument('--data-dir', type=str, default='/home/sergi-garcia/Projects/Finetunning/matting-data/HD', required=False)
+parser.add_argument('--data-out', type=str, default='inference_results/MambaHD', required=False)
+parser.add_argument('--variant', type=str, default='mamba', choices=['mobileone', 'mamba'])
+parser.add_argument('--weights', type=str, required=False, default='model/weights/mamba_epoch24.pth')
 
 args = parser.parse_args()
 
@@ -23,6 +24,7 @@ _DATASET_DIR = os.path.join(_ROOT_DIR, args.data_dir, args.dataset)
 _DATASET_OUT = os.path.join(_ROOT_DIR, args.data_out, args.dataset)
 _WEIGHTS_ = os.path.join(_ROOT_DIR, args.weights)
 
+
 if not os.path.isdir(_DATASET_OUT):
     os.makedirs(_DATASET_OUT, exist_ok=True)
 
@@ -30,11 +32,11 @@ torch.backends.cudnn.benchmark = True
 
 model = MattingNetwork(args.variant)
 model.load_state_dict(torch.load(_WEIGHTS_))
-model = model.eval()
-model = reparameterize_model(model)
-model = torch.jit.script(model)
-model = torch.jit.freeze(model)
-model = model.to('cuda')
+model = model.eval().cuda()
+# model = reparameterize_model(model)
+# model = torch.jit.script(model)
+# model = torch.jit.freeze(model)
+# model = model.to('cuda')
 
 def inference_pipeline(input_dir: str | None, set_dir: str | None, output_dir: str | None) -> None:
     """
@@ -56,6 +58,7 @@ def inference_pipeline(input_dir: str | None, set_dir: str | None, output_dir: s
     convert_video(
         model,  # The model, can be on any device (cpu or cuda).
         input_source=sequence_dir,  # A video file or an image sequence directory.
+        input_resize=(2048, 1024),
         output_type='png_sequence',  # Choose "video" or "png_sequence"
         output_composition=sequence_out_com,  # File path if video; directory path if png sequence.
         output_alpha=sequence_out_alpha,

@@ -30,39 +30,91 @@ Background Video Train/Valid
 
 """
 
+from pathlib import Path
+
+# Change to your main directory
+_ROOT_ = Path("/mnt/nvme0n1/Datasets")
 
 DATA_PATHS = {
-    
     'videomatte': {
-        'train': '../matting-data/VideoMatte240K_JPEG_SD/train',
-        'valid': '../matting-data/VideoMatte240K_JPEG_SD/valid',
+        'train': _ROOT_ / 'matting-data/VideoMatte240K_JPEG_SD/train',
+        'valid': _ROOT_ / 'matting-data/VideoMatte240K_JPEG_SD/val',
     },
+
+    'videomatteHD': {
+        'train': _ROOT_ / 'matting-data/VideoMatte240K_JPEG_HD/train',
+        'valid': _ROOT_ / 'matting-data/VideoMatte240K_JPEG_HD/val',
+    },
+
+    'brainstorm': {
+        'train': _ROOT_ / 'matting-data/Brainstorm/train',
+        'valid': _ROOT_ / 'matting-data/Brainstorm/val',
+    },
+
+    'brainstorm_bgs':{
+        'train': _ROOT_ / 'matting-data/Brainstorm/backgrounds/train',
+        'valid': _ROOT_ / 'matting-data/Brainstorm/backgrounds/val'
+    },
+
     'imagematte': {
-        'train': '../matting-data/ImageMatte/train',
-        'valid': '../matting-data/ImageMatte/valid',
+        'train':  _ROOT_ / 'matting-data/image-matte/ImageMatte/train',
+        'valid':  _ROOT_ / 'matting-data/image-matte/ImageMatte/val',
     },
+
+    'imgbra': {
+        'train':  _ROOT_ / 'matting-data/ImgBra/train',
+        'valid':  _ROOT_ / 'matting-data/ImgBra/val',
+    },
+
+    'am2k': {
+        'train':  _ROOT_ / 'matting-data/image-matte/AM2K/train',
+        'valid':  _ROOT_ / 'matting-data/image-matte/AM2K/val',
+    },
+
+    'bg20k':{
+        'train': _ROOT_ / 'matting-data/image-matte/BG20K/train',
+        'valid': _ROOT_ / 'matting-data/image-matte/BG20K/testval'
+    },
+
+    'h646': {
+        'train':  _ROOT_ / 'matting-data/image-matte/H646/train',
+        'valid':  _ROOT_ / 'matting-data/image-matte/H646/val',
+    },
+
+    'p3m': {
+        'train':  _ROOT_ / 'matting-data/image-matte/P3M-10k/train',
+        'valid':  _ROOT_ / 'matting-data/image-matte/P3M-10k/val',
+    },
+
+    'brainstorm_bg_images': {
+        'train': _ROOT_ / 'matting-data/ImgBra/train/bg',
+        'valid': _ROOT_ / 'matting-data/ImgBra/val/bg',
+    },
+
     'background_images': {
-        'train': '../matting-data/Backgrounds/train',
-        'valid': '../matting-data/Backgrounds/valid',
+        'train':  _ROOT_ / 'matting-data/ImageMatte/train/bgr',
+        'valid':  _ROOT_ / 'matting-data/ImageMatte/val/bgr',
     },
+
     'background_videos': {
-        'train': '../matting-data/BackgroundVideos/train',
-        'valid': '../matting-data/BackgroundVideos/valid',
+        'train':  _ROOT_ / 'matting-data/BackgroundVideos/train',
+        'valid':  _ROOT_ / 'matting-data/BackgroundVideos/test',
     },
-    
-    
+
     'coco_panoptic': {
-        'imgdir': '../matting-data/coco/train2017/',
-        'anndir': '../matting-data/coco/panoptic_train2017/',
-        'annfile': '../matting-data/coco/annotations/panoptic_train2017.json',
+        'imgdir':  _ROOT_ / 'matting-data/coco/train2017/',
+        'anndir':  _ROOT_ / 'matting-data/coco/annotations/panoptic_train2017/',
+        'annfile': _ROOT_ / 'matting-data/coco/annotations/panoptic_train2017.json',
     },
+
     'spd': {
-        'imgdir': '../matting-data/SuperviselyPersonDataset/img',
-        'segdir': '../matting-data/SuperviselyPersonDataset/seg',
+        'imgdir':  _ROOT_ / 'matting-data/SuperviselyPersonDataset/img',
+        'segdir':  _ROOT_ / 'matting-data/SuperviselyPersonDataset/seg',
     },
+
     'youtubevis': {
-        'videodir': '../matting-data/YouTubeVIS/train/JPEGImages',
-        'annfile': '../matting-data/YouTubeVIS/train/instances.json',
+        'videodir': _ROOT_ / 'matting-data/VOS/train/JPEGImages',
+        'annfile':  _ROOT_ / 'matting-data/VOS/train/instances.json',
     }
-    
+
 }

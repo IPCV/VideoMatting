@@ -32,7 +32,7 @@ class MattingNetwork(nn.Module):
             self.backbone = mobileone(variant='s0')
             if pretrained_backbone:
                 checkpoint = torch.load('model/weights/mobileone_s0_unfused.pth.tar')
-                self.backbone.load_state_dict(checkpoint)
+                self.backbone.load_state_dict(checkpoint,   strict=False)
             self.aspp = LRASPP(1024, 512)
             self.decoder = RecurrentDecoder(feature_channels=[48, 48, 128, 256, 512],
                                             decoder_channels=[512, 256, 128, 16])
@@ -46,7 +46,7 @@ class MattingNetwork(nn.Module):
             self.backbone = mobileone(variant='s1')
             if pretrained_backbone:
                 checkpoint = torch.load('model/weights/mobileone_s1_unfused.pth.tar')
-                self.backbone.load_state_dict(checkpoint)
+                self.backbone.load_state_dict(checkpoint, strict=False)
             self.aspp = LRASPP(1280, 256)
             self.decoder = RecurrentDecoder(feature_channels=[64, 96, 192, 512, 256],
                                             decoder_channels=[256, 512, 256, 16])

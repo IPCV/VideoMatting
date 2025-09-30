@@ -117,7 +117,7 @@ def convert_video(model,
     try:
         with torch.no_grad():
             bar = tqdm(total=len(source), disable=not progress, dynamic_ncols=True)
-            rec = [None] * 4
+            rec = [None] * 5
             for src in reader:
 
                 if downsample_ratio is None:

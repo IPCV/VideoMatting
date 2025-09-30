@@ -75,7 +75,6 @@ class MobileOneBlock(nn.Module):
                  inference_mode: bool = False,
                  use_se: bool = False,
                  num_conv_branches: int = 1) -> None:
-
         """ Construct a MobileOneBlock module.
 
         :param in_channels: Number of channels in the input.
@@ -97,6 +96,7 @@ class MobileOneBlock(nn.Module):
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.num_conv_branches = num_conv_branches
+
         # Check if SE-ReLU is requested
         if use_se:
             self.se = SEBlock(out_channels)
@@ -119,19 +119,11 @@ class MobileOneBlock(nn.Module):
                 if out_channels == in_channels and stride == 1 else None
 
             # Re-parameterizable conv branches
-            # rbr_conv = list()
-            # for _ in range(self.num_conv_branches):
-            #     rbr_conv.append(self._conv_bn(kernel_size=kernel_size,
-            #                                   padding=padding))
-            # self.rbr_conv = nn.ModuleList(rbr_conv)
-            if self.num_conv_branches > 0:
-                rbr_conv = []
-                for _ in range(self.num_conv_branches):
-                    rbr_conv.append(self._conv_bn(kernel_size=kernel_size,
-                                                  padding=padding))
-                self.rbr_conv = nn.ModuleList(rbr_conv)
-            else:
-                self.rbr_conv = None
+            rbr_conv = list()
+            for _ in range(self.num_conv_branches):
+                rbr_conv.append(self._conv_bn(kernel_size=kernel_size,
+                                              padding=padding))
+            self.rbr_conv = nn.ModuleList(rbr_conv)
 
             # Re-parameterizable scale branch
             self.rbr_scale = None
@@ -142,32 +134,26 @@ class MobileOneBlock(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """ Apply forward pass. """
         # Inference mode forward pass.
-
         if self.inference_mode:
             return self.activation(self.se(self.reparam_conv(x)))
-        else:
-            # Multi-branched train-time forward pass.
-            # Skip branch output
-            # identity_out = 0
-            identity_out = torch.zeros_like(x)
-            if self.rbr_skip is not None:
-                identity_out = self.rbr_skip(x)
 
-            # Scale branch output
-            # scale_out = 0
-            scale_out = torch.zeros_like(x)
-            if self.rbr_scale is not None:
-                scale_out = self.rbr_scale(x)
+        # Multi-branched train-time forward pass.
+        # Skip branch output
+        identity_out = 0
+        if self.rbr_skip is not None:
+            identity_out = self.rbr_skip(x)
 
-            # Other branches
-            out = scale_out + identity_out
-            # for ix in range(self.num_conv_branches):
-            #     out += self.rbr_conv[ix](x)
-            if self.rbr_conv is not None:
-                for conv in self.rbr_conv:
-                    out = out + conv(x)
+        # Scale branch output
+        scale_out = 0
+        if self.rbr_scale is not None:
+            scale_out = self.rbr_scale(x)
 
-            return self.activation(self.se(out))
+        # Other branches
+        out = scale_out + identity_out
+        for ix in range(self.num_conv_branches):
+            out += self.rbr_conv[ix](x)
+
+        return self.activation(self.se(out))
 
     def reparameterize(self):
         """ Following works like `RepVGG: Making VGG-style ConvNets Great Again` -
@@ -190,16 +176,12 @@ class MobileOneBlock(nn.Module):
         self.reparam_conv.bias.data = bias
 
         # Delete un-used branches
-        #for para in self.parameters():
-        #    para.detach_()
-        #self.__delattr__('rbr_conv')
-        #self.__delattr__('rbr_scale')
-        #if hasattr(self, 'rbr_skip'):
-        #    self.__delattr__('rbr_skip')
-
-        self.rbr_skip = None
-        self.rbr_scale = None
-        self.rbr_conv = None
+        for para in self.parameters():
+            para.detach_()
+        self.__delattr__('rbr_conv')
+        self.__delattr__('rbr_scale')
+        if hasattr(self, 'rbr_skip'):
+            self.__delattr__('rbr_skip')
 
         self.inference_mode = True
 
@@ -399,7 +381,7 @@ class MobileOne(nn.Module):
             self.cur_layer_idx += 1
         return nn.Sequential(*blocks)
 
-    def forward_single_frame(self, x: torch.Tensor) -> List[torch.Tensor]:
+    def forward_single_frame(self, x: torch.Tensor) -> torch.Tensor:
         """ Apply forward pass. """
         x = self.stage0(x)
         f1 = self.stage1(x)
@@ -411,13 +393,13 @@ class MobileOne(nn.Module):
         # x = self.linear(x)
         return [x, f1, f2, f3, f4] # [f1, f2, f3, f4]
 
-    def forward_time_series(self, x: torch.Tensor) -> List[torch.Tensor]:
+    def forward_time_series(self, x):
         B, T = x.shape[:2]
         features = self.forward_single_frame(x.flatten(0, 1))
         features = [f.unflatten(0, (B, T)) for f in features]
         return features
 
-    def forward(self, x: torch.Tensor) -> List[torch.Tensor]:
+    def forward(self, x):
         if x.ndim == 5:
             return self.forward_time_series(x)
         else:
@@ -469,12 +451,12 @@ def reparameterize_model(model: torch.nn.Module) -> nn.Module:
 if __name__ == "__main__":
     _ROOT_ = Path(__file__).parents[2]
     transform = transforms.ToTensor()
-    img_path = "/home/sergi-garcia/Projects/Finetunning/matting-data/HD/Brainstorm/0000/com/0000.png"
+    img_path = "/mnt/nvme0n1/Datasets2/datasets/Brainstorm/4k/0001/com/0008.png"
     img = Image.open(img_path)
     img = transform(img)
     img = img.unsqueeze(0)
 
-    model = mobileone(variant="s0")
+    model = mobileone(variant="s1")
     print(model)
     features = model(img)
     x = 2
