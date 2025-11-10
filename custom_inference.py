@@ -11,11 +11,11 @@ from inference import convert_video
 
 parser = argparse.ArgumentParser()
 # Matting dataset
-parser.add_argument('--dataset', type=str, default='VM-Test-HD', required=False)
+parser.add_argument('--dataset', type=str, default='Brainstorm', required=False)
 parser.add_argument('--data-dir', type=str, default='/home/sergi-garcia/Projects/Finetunning/matting-data/HD', required=False)
-parser.add_argument('--data-out', type=str, default='inference_results/MambaHD', required=False)
+parser.add_argument('--data-out', type=str, default='inference_results/MambaHD/stage4', required=False)
 parser.add_argument('--variant', type=str, default='mamba', choices=['mobileone', 'mamba'])
-parser.add_argument('--weights', type=str, required=False, default='model/weights/mamba_epoch24.pth')
+parser.add_argument('--weights', type=str, required=False, default='model/weights/stage4.pth')
 
 args = parser.parse_args()
 
