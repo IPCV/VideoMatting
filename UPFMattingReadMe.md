@@ -284,19 +284,6 @@ Defined in `train_loss.py`, the training uses a combination of:
 - **Perceptual Loss**: Feature-based loss for realism
 - **Gradient Loss**: Edge preservation
 
-## PyTorch Hub Integration
-
-Load pretrained models directly via PyTorch Hub using `hubconf.py`:
-```
-python
-import torch
-
-# Load MobileOne variant
-model = torch.hub.load('repo', 'mobileone_rvm', pretrained=True)
-
-# Load Mamba variant
-model = torch.hub.load('repo', 'mamba_rvm', pretrained=True)
-```
 ## Evaluation
 
 The `evaluation/` directory contains scripts for:
@@ -359,4 +346,3 @@ The `evaluation/` directory contains scripts for:
 
 **Maintained by**: UPF Research Team  
 **Last Updated**: 2025-11-12
-``'
